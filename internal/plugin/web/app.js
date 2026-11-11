@@ -51,6 +51,7 @@ let loadController = null;
 // Whether a refresh started with the button is running; polling never shows progress.
 let refreshing = false;
 let pending = false;
+let connecting = false;
 let storageError = "";
 let clearPath = "";
 class AuthError extends Error {}
@@ -74,6 +75,10 @@ async function api(path, { method = "GET", body, apiKey, signal } = {}) {
   }
   let data = null;
   try { data = JSON.parse(text); } catch (_) {}
+  const serverMessage = typeof data?.error === "string" ? data.error : data?.error?.message;
+  if (resp.status === 403 && apiKey === undefined && requestKey === key && serverMessage?.startsWith("IP banned due to too many failed attempts")) {
+    throw new AuthError("CPA 管理接口因多次认证失败暂时封禁，请确认管理密钥后等待解封。" + serverMessage);
+  }
   // A 401 for a key replaced by a newer login must not sign that login out.
   if (resp.status === 401 && apiKey === undefined && requestKey === key) throw new AuthError(requestKey === null ? "面板登录已过期，请返回面板重新登录。" : "管理密钥无效，请重新输入。");
   if (!resp.ok) {
@@ -294,14 +299,33 @@ function showLogin(message) {
 }
 
 async function start() {
+  if (connecting) return;
+  connecting = true;
+  $("login-connect").disabled = true;
+  $("login-connect").textContent = "正在验证…";
+  $("login-error").hidden = true;
   setNotice("flash", "");
-  $("login").hidden = true;
-  $("app").hidden = false;
   const managementKey = key;
-  await openCatalogCache(managementKey);
-  if (managementKey !== key) return;
-  fillModels();
-  await load({ refresh: true });
+  try {
+    // Verify once before opening the page or starting parallel catalog requests.
+    await api("/v0/management/plugins");
+    if (managementKey !== key) return;
+    if (key !== null) {
+      try { sessionStorage.setItem(KEY_STORE, key); } catch (_) {}
+    }
+    $("login").hidden = true;
+    $("app").hidden = false;
+    await openCatalogCache(managementKey);
+    if (managementKey !== key) return;
+    fillModels();
+    await load({ refresh: true });
+  } catch (err) {
+    if (managementKey === key) showLogin(err.message);
+  } finally {
+    connecting = false;
+    $("login-connect").disabled = false;
+    $("login-connect").textContent = "连接";
+  }
 }
 
 function setMasked(masked) {
@@ -396,8 +420,8 @@ $("confirm-clear").addEventListener("close", () => {
 
 $("login-form").addEventListener("submit", (e) => {
   e.preventDefault();
+  if (connecting) return;
   key = $("login-key").value.trim();
-  try { sessionStorage.setItem(KEY_STORE, key); } catch (_) {}
   start();
 });
 

@@ -64,6 +64,40 @@ const stableID = (kind, parts) => kind + ':' + crypto.createHash('sha256').updat
   finishAPI({status:401,ok:false,text:async () => '{"error":"Expired login"}'});
   await assert.rejects(previousLogin, error => !(error instanceof run(`AuthError`)) && error.status === 401, 'a stale key must not sign out a newer login');
   delete context.fetch;
+  for (const [status, error] of [[401,'invalid management key'], [403,'IP banned due to too many failed attempts. Try again in 10m']]) {
+    const loginRequests = [];
+    context.fetch = async (url) => { loginRequests.push(url); return {status,ok:false,text:async () => JSON.stringify({error})}; };
+    run(`key='invalid-test-key'; credentials=[]`);
+    await run(`start()`);
+    assert.deepEqual(loginRequests, ['/v0/management/plugins'], 'failed login must make one verification request and no parallel catalog requests');
+    assert.equal(element('app').hidden, true);
+    assert.equal(element('login').hidden, false);
+    assert.equal(run(`key`), '');
+    assert.equal(run(`connecting`), false);
+    assert.equal(element('login-connect').disabled, false);
+    if (status === 403) assert(element('login-error').textContent.includes('暂时封禁'));
+  }
+  let resolveLogin;
+  context.fetch = () => new Promise(resolve => {resolveLogin=resolve;});
+  run(`key='pending-test-key'`);
+  const verifyingLogin = run(`start()`);
+  assert.equal(element('login-connect').disabled, true);
+  await run(`start()`);
+  resolveLogin({status:401,ok:false,text:async () => '{"error":"invalid management key"}'});
+  await verifyingLogin;
+  const verifiedRequests = [];
+  context.fetch = async (url) => {
+    verifiedRequests.push(url);
+    const body = url.endsWith('/state') ? {credentials:[]} : url === '/v1/models' ? {data:[{id:'gpt-6.1-sol'}]} : {'api-keys':['test-client-key']};
+    return {status:200,ok:true,text:async () => JSON.stringify(body)};
+  };
+  run(`key='valid-test-key'`);
+  await run(`start()`);
+  assert.equal(verifiedRequests[0], '/v0/management/plugins');
+  assert(verifiedRequests.includes('/v0/management/config'), 'verified login may discover models');
+  assert.equal(element('app').hidden, false);
+  run(`stopPolling()`);
+  delete context.fetch;
   for (const input of ['', 'abc', '中文配置', 'a'.repeat(1000)]) {
     assert.equal(await run(`sha256Hex(${JSON.stringify(input)})`), crypto.createHash('sha256').update(input).digest('hex'));
   }
