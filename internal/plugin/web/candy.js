@@ -39,15 +39,15 @@ function renderCandyRow(a) {
     ? `<b class="mono">${Math.round((correct / graded.length) * 100)}%</b><small class="mono">${correct}/${graded.length}</small>`
     : `<span class="none">—</span>`;
   const marks = records.map((r) => `<button class="mark-hit" type="button" data-credential="${esc(a.id)}" data-record="${esc(r.id)}" aria-label="${esc(`${fmtTime(r.time)} ${modelName(r)} ${CANDY_STATUS[r.status]?.[1] || ""}`)}">${icon(STATUS_ICONS[candyKind(r)], `mark ${candyKind(r)} ${candyScopeMatch(r) ? "" : "dim"}`)}</button>`).join("");
-  const progress = a.running?.test === "candy" && `${a.running.done}/${a.running.total}`;
+  const progress = a.running?.test === "candy" && a.running;
   const blocker = runBlocker("candy", a);
   const button = progress
-    ? `<button class="btn ghost" type="button" aria-label="测试中 ${progress}" data-tip disabled>${icon("loader-circle", "spin")}<span class="mono">${progress}</span></button>`
+    ? collectionButton("candy", a, progress, "测试")
     : `<button class="btn" type="button" data-candy-run="${esc(a.id)}" ${disabledFor(blocker)}>${icon("play")}测试</button>`;
 
   return credentialRow({
     test: "candy", credential: a, selected: candySelected.has(a.id), open: candyExpanded.has(a.id), selectable: !blocker, button,
-    result: latestResult(last, candyVerdict), meta: `<div class="rate">${rate}</div><div class="marks">${marks}</div>`, tested: records.length > 0,
+    result: progress ? collectionOutcome(progress) : latestResult(last, candyVerdict), meta: `<div class="rate">${rate}</div><div class="marks">${marks}</div>`, tested: records.length > 0,
     history: () => [...records].reverse().map((r) => candyHistory(a, r)).join(""),
   });
 }
@@ -95,6 +95,8 @@ function initializeCandy() {
     }
     const btn = e.target.closest("[data-candy-run]");
     if (btn) return runCandy({ credential_ids: [btn.dataset.candyRun] });
+    const cancel = e.target.closest("[data-candy-cancel]");
+    if (cancel) return update("停止测试失败", () => api(`${BASE}/cancel`, { method: "POST", body: { credential_ids: [cancel.dataset.candyCancel] } }));
     const row = e.target.closest("[data-row]");
     if (!row) return;
     const id = row.dataset.row;

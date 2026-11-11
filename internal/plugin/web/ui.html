@@ -32,10 +32,12 @@
           <button id="tab-siwc" class="tab" role="tab" aria-selected="false" aria-controls="siwc-panel" tabindex="-1" type="button">SIWC 检测</button>
         </div>
         <div class="page-actions">
+          <button id="concurrency-settings" type="button" aria-haspopup="dialog" aria-controls="concurrency-dialog">凭证并发 2</button>
           <button id="clear-all" type="button" aria-label="清空全部测试记录" data-tip disabled><i data-icon="trash-2"></i></button>
           <button id="refresh" type="button" aria-label="刷新凭证和模型" data-tip aria-busy="false"><i data-icon="rotate-cw"></i></button>
         </div>
       </div>
+      <div class="legend" role="status"><span id="scheduler-status">最多同时测试 2 个凭证</span></div>
       <div id="notifications"></div>
       <section id="candy-panel" role="tabpanel" aria-labelledby="tab-candy">
         <div class="panel-intro">
@@ -118,6 +120,19 @@
       </section>
     </div>
 
+    <dialog id="concurrency-dialog" class="confirm" aria-labelledby="concurrency-title">
+      <form id="concurrency-form">
+        <h2 id="concurrency-title">凭证并发设置</h2>
+        <p>所有检测共用此上限。凭证完成或请求失败结束后，自动接上排队中的下一个凭证。</p>
+        <label class="field"><span class="field-label">同时测试的凭证数（1–10）</span><input id="credential-concurrency" class="mono" type="number" min="1" max="10" step="1" value="2" required></label>
+        <p>指纹的每凭证并发单独设置。降低上限时，正在进行的测试会继续，等待名额空出后再开始下一项。</p>
+        <p id="concurrency-error" class="error" hidden></p>
+        <div class="dialog-actions">
+          <button id="concurrency-cancel" class="btn ghost" type="button">取消</button>
+          <button id="concurrency-save" class="btn" type="submit">保存</button>
+        </div>
+      </form>
+    </dialog>
     <dialog id="confirm-clear" class="confirm">
       <form method="dialog">
         <h2 id="clear-title">清空测试记录？</h2>

@@ -60,6 +60,10 @@ func candyRunResponse(body []byte) managementResponse {
 				p.Done++
 				_ = saveStateLocked()
 				mu.Unlock()
+				// A terminal request failure ends this credential's remaining runs and frees its slot.
+				if r.Status == "failed" {
+					return
+				}
 			}
 		})
 }

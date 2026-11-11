@@ -55,13 +55,11 @@ function pelicanHistory(a, r) {
 }
 
 function renderPelicanRow(a) {
-  const records = a.pelicans, last = records.at(-1);
-  const button = a.running?.test === "pelican"
-    ? `<button class="btn ghost" type="button" data-tip="正在等待模型作画" disabled>${icon("loader-circle", "spin")}测试中</button>`
-    : collectionButton("pelican", a, null, "测试");
+  const records = a.pelicans, last = records.at(-1), progress = a.running?.test === "pelican" && a.running;
+  const button = collectionButton("pelican", a, progress, "测试");
   return credentialRow({
     test: "pelican", credential: a, selected: pelicanSelected.has(a.id), open: pelicanExpanded.has(a.id), selectable: runnable("pelican", a), button,
-    result: latestResult(last, pelicanVerdict), tested: !!last, meta: last ? pelicanPreview(a.id, last) : `<span class="none">—</span>`,
+    result: progress ? collectionOutcome(progress) : latestResult(last, pelicanVerdict), tested: !!last, meta: last ? pelicanPreview(a.id, last) : `<span class="none">—</span>`,
     history: () => [...records].reverse().map((r) => pelicanHistory(a, r)).join(""),
   });
 }
