@@ -22,19 +22,22 @@ func setupTest(t *testing.T) {
 	previousLoadError, previousStorageError := stateLoadError, storageError
 	previousRecords, previousRunning, previousInspections := records, running, inspections
 	previousRunCtx, previousStopRuns, previousRetryDelay := runCtx, stopRuns, retryDelay
+	previousPending, previousActive := pendingRuns, activeRuns
 	t.Cleanup(func() {
-		tasks.Wait()
+		Quiesce()
 		configuredCredentials = previousCredentials
 		hostCall, statePath, loaded = previousHost, previousPath, previousLoaded
 		stateLoadError, storageError = previousLoadError, previousStorageError
 		records, running, inspections = previousRecords, previousRunning, previousInspections
 		runCtx, stopRuns, retryDelay = previousRunCtx, previousStopRuns, previousRetryDelay
+		pendingRuns, activeRuns = previousPending, previousActive
 	})
 	configuredCredentials = map[string]credential{}
 	statePath, loaded = filepath.Join(t.TempDir(), "state.json"), false
 	stateLoadError, storageError = nil, ""
 	records, running, inspections = emptyState(), map[string]*progress{}, map[string]inspection{}
 	runCtx, stopRuns = context.WithCancel(context.Background())
+	pendingRuns, activeRuns = nil, 0
 	retryDelay = time.Millisecond
 	hostCall = func(method string, _ any) (json.RawMessage, error) {
 		t.Errorf("unexpected host call: %s", method)

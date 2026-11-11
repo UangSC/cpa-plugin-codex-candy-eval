@@ -14,7 +14,7 @@ const usableCredential = (a) => !a.disabled && !a.unavailable;
 function credentialBlocker(a, test) {
   if (a.disabled) return "凭证已停用，启用后才能测试";
   if (a.unavailable) return "凭证暂不可用：" + unavailableReason(a);
-  if (credentialBusy(a)) return `${busyTest(a)}进行中，结束后才能开始新测试`;
+  if (credentialBusy(a)) return `${busyTest(a)}${a.running.queued ? "排队中" : "进行中"}，结束或取消后才能开始新测试`;
   if (credentialChanges.has(a.id)) return "正在保存凭证设置…";
   if (test === "siwc" && !a.siwc_bound) return "请先在 CPA 的 OAuth 登录中绑定 SIWC";
   if (test === "siwc" && !a.use_siwc) return "请先开启「使用 SIWC」";

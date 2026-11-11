@@ -48,6 +48,10 @@ func readState(data []byte) (s state, version int, err error) {
 		err = json.Unmarshal(data, &s)
 	}
 	s.SchemaVersion = stateSchemaVersion
+	// Optional additive setting: old state files keep their history and use the safe default.
+	if s.CredentialConcurrency < 1 || s.CredentialConcurrency > maxCredentialConcurrency {
+		s.CredentialConcurrency = defaultCredentialConcurrency
+	}
 	s.Candies, s.Fingerprints, s.Pelicans = recent(s.Candies), recent(s.Fingerprints), recent(s.Pelicans)
 	s.SIWC = recent(s.SIWC)
 	return s, version, err

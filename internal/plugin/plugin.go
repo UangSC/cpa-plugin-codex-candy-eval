@@ -14,7 +14,7 @@ import (
 
 const (
 	pluginID      = "cpa-codex-candy-eval"
-	pluginVersion = "0.4.6"
+	pluginVersion = "0.4.7-uangsc.2"
 	ABIVersion    = 1
 	// rpcSchemaVersion is the version of CPA's plugin RPC contract, not of the state file.
 	rpcSchemaVersion = 6
@@ -82,7 +82,7 @@ func HandleMethod(method string, request []byte) (response []byte) {
 				"Name":             pluginID,
 				"Version":          pluginVersion,
 				"Author":           "haowang02",
-				"GitHubRepository": "https://github.com/haowang02/cpa-plugin-codex-candy-eval",
+				"GitHubRepository": "https://github.com/UangSC/cpa-plugin-codex-candy-eval",
 				"Logo":             "data:image/svg+xml;base64," + base64.StdEncoding.EncodeToString([]byte(logoSVG)),
 				"ConfigFields":     []any{},
 			},
@@ -130,6 +130,7 @@ var routes = func() []route {
 	return []route{
 		{http.MethodPost, "/credentials/sync", "Sync configured credential identities", withBody(syncCredentialsResponse)},
 		{http.MethodGet, "/state", "View credentials with their test records", func(managementRequest) managementResponse { return stateResponse() }},
+		{http.MethodPut, "/settings", "Set the shared credential concurrency limit", withBody(settingsResponse)},
 		{http.MethodPost, "/cancel", "Stop the tests running on credentials", withBody(cancelResponse)},
 		{http.MethodDelete, "/records", "Clear the records of every test", clearRecords("all")},
 		{http.MethodPost, "/candy/run", "Run the candy test on credentials", withBody(candyRunResponse)},
@@ -203,7 +204,7 @@ func stateResponse() managementResponse {
 			SIWC:         append([]siwcRecord{}, records.SIWC[auth.ID]...),
 		}
 	}
-	return jsonResponse(http.StatusOK, map[string]any{"credentials": views, "storage_error": storageError})
+	return jsonResponse(http.StatusOK, map[string]any{"credentials": views, "storage_error": storageError, "scheduler": schedulerStatusLocked()})
 }
 
 func summaries[T interface{ summary() T }](list []T) []T {
@@ -220,6 +221,7 @@ func Quiesce() {
 	for _, p := range running {
 		p.Cancelling = true
 	}
+	discardCancelledRunsLocked()
 	mu.Unlock()
 	tasks.Wait()
 }

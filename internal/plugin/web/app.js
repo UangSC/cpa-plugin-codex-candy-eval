@@ -1,5 +1,40 @@
 "use strict";
 const BASE = "/v0/management/plugins/cpa-codex-candy-eval";
+let scheduler = { credential_concurrency: 2, active: 0, queued: 0 };
+
+function renderScheduler() {
+  $("concurrency-settings").textContent = `凭证并发 ${scheduler.credential_concurrency}`;
+  $("concurrency-settings").disabled = pending;
+  $("concurrency-save").disabled = pending;
+  $("scheduler-status").textContent = `最多同时测试 ${scheduler.credential_concurrency} 个凭证 · 进行中 ${scheduler.active} · 排队 ${scheduler.queued}`;
+}
+
+function openConcurrencySettings() {
+  $("credential-concurrency").value = scheduler.credential_concurrency;
+  $("concurrency-error").hidden = true;
+  $("concurrency-dialog").showModal();
+  $("credential-concurrency").focus();
+}
+
+function saveConcurrency() {
+  const limit = Number($("credential-concurrency").value);
+  if (!Number.isInteger(limit) || limit < 1 || limit > 10) {
+    $("concurrency-error").textContent = "凭证并发须为 1–10 的整数";
+    $("concurrency-error").hidden = false;
+    return;
+  }
+  return update("保存并发设置失败", async () => {
+    try {
+      scheduler = await api(BASE + "/settings", { method: "PUT", body: { credential_concurrency: limit } });
+    } catch (err) {
+      $("concurrency-error").textContent = err.message;
+      $("concurrency-error").hidden = false;
+      throw err;
+    }
+    $("concurrency-dialog").close();
+    setNotice("flash", `凭证并发已设为 ${scheduler.credential_concurrency}`, "info");
+  });
+}
 const DEFAULT_MODEL = "gpt-6.1-sol";
 const DEFAULT_EFFORT = "low";
 const DEFAULT_EFFORTS = ["none", "low", "medium", "high", "xhigh", "max"];
@@ -16,6 +51,7 @@ let loadController = null;
 // Whether a refresh started with the button is running; polling never shows progress.
 let refreshing = false;
 let pending = false;
+let connecting = false;
 let storageError = "";
 let clearPath = "";
 class AuthError extends Error {}
@@ -39,6 +75,10 @@ async function api(path, { method = "GET", body, apiKey, signal } = {}) {
   }
   let data = null;
   try { data = JSON.parse(text); } catch (_) {}
+  const serverMessage = typeof data?.error === "string" ? data.error : data?.error?.message;
+  if (resp.status === 403 && apiKey === undefined && requestKey === key && serverMessage?.startsWith("IP banned due to too many failed attempts")) {
+    throw new AuthError("CPA 管理接口因多次认证失败暂时封禁，请确认管理密钥后等待解封。" + serverMessage);
+  }
   // A 401 for a key replaced by a newer login must not sign that login out.
   if (resp.status === 401 && apiKey === undefined && requestKey === key) throw new AuthError(requestKey === null ? "面板登录已过期，请返回面板重新登录。" : "管理密钥无效，请重新输入。");
   if (!resp.ok) {
@@ -119,6 +159,7 @@ function rowNode(html) {
 }
 
 function renderPageActions() {
+  renderScheduler();
   $("clear-all").disabled = pending || credentials.every((a) => !a.candies.length && !a.fingerprints.length && !a.pelicans.length && !a.siwc.length);
   $("refresh").disabled = pending || refreshing;
   $("refresh").setAttribute("aria-busy", refreshing);
@@ -168,6 +209,7 @@ async function load({ refresh = false } = {}) {
     const data = await api(BASE + "/state", { signal: controller.signal });
     if (controller.signal.aborted) return;
     credentials = stateCredentials(data);
+    scheduler = data.scheduler || { credential_concurrency: 2, active: 0, queued: 0 };
     pruneCredentialCatalog();
     storageError = data.storage_error || "";
     loadError = "";
@@ -224,7 +266,7 @@ function startTest(test, body) {
     setNotice("catalog-error", "");
     if (!catalogCache.models?.ids.includes(body.model)) throw new Error("所选模型已不在模型列表中，请重新选择。");
     const response = await api(`${BASE}/${test}/run`, { method: "POST", body: { ...body, model_catalog: await modelCatalog(body.credential_ids) } });
-    const messages = [`已为 ${response.started || 0} 个凭证开始测试`];
+    const messages = [`已提交 ${response.started || 0} 个凭证：${(response.started || 0) - (response.queued || 0)} 个开始测试，${response.queued || 0} 个排队`];
     if (response.skipped) messages.push(`${response.skipped} 个凭证不支持所选模型，已跳过`);
     if (response.unchecked) messages.push(`${response.unchecked} 个凭证无法读取模型列表，仍会尝试测试`);
     if (response.busy) messages.push(`${response.busy} 个凭证正在测试，已跳过`);
@@ -234,6 +276,7 @@ function startTest(test, body) {
 
 function showLogin(message) {
   stopPolling();
+  if ($("concurrency-dialog").open) $("concurrency-dialog").close();
   if (key !== null) {
     key = "";
     try { sessionStorage.removeItem(KEY_STORE); } catch (_) {}
@@ -256,14 +299,33 @@ function showLogin(message) {
 }
 
 async function start() {
+  if (connecting) return;
+  connecting = true;
+  $("login-connect").disabled = true;
+  $("login-connect").textContent = "正在验证…";
+  $("login-error").hidden = true;
   setNotice("flash", "");
-  $("login").hidden = true;
-  $("app").hidden = false;
   const managementKey = key;
-  await openCatalogCache(managementKey);
-  if (managementKey !== key) return;
-  fillModels();
-  await load({ refresh: true });
+  try {
+    // Verify once before opening the page or starting parallel catalog requests.
+    await api("/v0/management/plugins");
+    if (managementKey !== key) return;
+    if (key !== null) {
+      try { sessionStorage.setItem(KEY_STORE, key); } catch (_) {}
+    }
+    $("login").hidden = true;
+    $("app").hidden = false;
+    await openCatalogCache(managementKey);
+    if (managementKey !== key) return;
+    fillModels();
+    await load({ refresh: true });
+  } catch (err) {
+    if (managementKey === key) showLogin(err.message);
+  } finally {
+    connecting = false;
+    $("login-connect").disabled = false;
+    $("login-connect").textContent = "连接";
+  }
 }
 
 function setMasked(masked) {
@@ -294,6 +356,9 @@ function initializeLayout() {
 }
 
 // Events and initialization.
+$("concurrency-settings").addEventListener("click", openConcurrencySettings);
+$("concurrency-cancel").addEventListener("click", () => $("concurrency-dialog").close());
+$("concurrency-form").addEventListener("submit", (e) => { e.preventDefault(); saveConcurrency(); });
 initializeLayout();
 initializeTips();
 initializeCopyButtons();
@@ -355,8 +420,8 @@ $("confirm-clear").addEventListener("close", () => {
 
 $("login-form").addEventListener("submit", (e) => {
   e.preventDefault();
+  if (connecting) return;
   key = $("login-key").value.trim();
-  try { sessionStorage.setItem(KEY_STORE, key); } catch (_) {}
   start();
 });
 

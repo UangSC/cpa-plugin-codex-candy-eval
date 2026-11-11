@@ -25,7 +25,7 @@ function element(id) {
     get firstChild() { return this.childNodes[0] ?? null; },
     insertBefore(node, ref) { node.remove(); const i = this.childNodes.indexOf(ref); this.childNodes.splice(i < 0 ? this.childNodes.length : i, 0, node); node.parentNode = this; },
     setAttribute(name, value) { this[name] = value; }, querySelector(selector) { return element(id + ' ' + selector); }, listeners: {}, addEventListener(name, fn) { this.listeners[name] = fn; },
-    contains() { return false; }, focus() {}, showModal() { this.open = true; },
+    contains() { return false; }, focus() {}, showModal() { this.open = true; }, close() { this.open = false; },
   });
   return elements.get(id);
 }
@@ -63,6 +63,40 @@ const stableID = (kind, parts) => kind + ':' + crypto.createHash('sha256').updat
   run(`key='new-login'`);
   finishAPI({status:401,ok:false,text:async () => '{"error":"Expired login"}'});
   await assert.rejects(previousLogin, error => !(error instanceof run(`AuthError`)) && error.status === 401, 'a stale key must not sign out a newer login');
+  delete context.fetch;
+  for (const [status, error] of [[401,'invalid management key'], [403,'IP banned due to too many failed attempts. Try again in 10m']]) {
+    const loginRequests = [];
+    context.fetch = async (url) => { loginRequests.push(url); return {status,ok:false,text:async () => JSON.stringify({error})}; };
+    run(`key='invalid-test-key'; credentials=[]`);
+    await run(`start()`);
+    assert.deepEqual(loginRequests, ['/v0/management/plugins'], 'failed login must make one verification request and no parallel catalog requests');
+    assert.equal(element('app').hidden, true);
+    assert.equal(element('login').hidden, false);
+    assert.equal(run(`key`), '');
+    assert.equal(run(`connecting`), false);
+    assert.equal(element('login-connect').disabled, false);
+    if (status === 403) assert(element('login-error').textContent.includes('暂时封禁'));
+  }
+  let resolveLogin;
+  context.fetch = () => new Promise(resolve => {resolveLogin=resolve;});
+  run(`key='pending-test-key'`);
+  const verifyingLogin = run(`start()`);
+  assert.equal(element('login-connect').disabled, true);
+  await run(`start()`);
+  resolveLogin({status:401,ok:false,text:async () => '{"error":"invalid management key"}'});
+  await verifyingLogin;
+  const verifiedRequests = [];
+  context.fetch = async (url) => {
+    verifiedRequests.push(url);
+    const body = url.endsWith('/state') ? {credentials:[]} : url === '/v1/models' ? {data:[{id:'gpt-6.1-sol'}]} : {'api-keys':['test-client-key']};
+    return {status:200,ok:true,text:async () => JSON.stringify(body)};
+  };
+  run(`key='valid-test-key'`);
+  await run(`start()`);
+  assert.equal(verifiedRequests[0], '/v0/management/plugins');
+  assert(verifiedRequests.includes('/v0/management/config'), 'verified login may discover models');
+  assert.equal(element('app').hidden, false);
+  run(`stopPolling()`);
   delete context.fetch;
   for (const input of ['', 'abc', '中文配置', 'a'.repeat(1000)]) {
     assert.equal(await run(`sha256Hex(${JSON.stringify(input)})`), crypto.createHash('sha256').update(input).digest('hex'));
@@ -609,6 +643,39 @@ const stableID = (kind, parts) => kind + ':' + crypto.createHash('sha256').updat
   await enabling;
   assert.equal(run(`credentials[0].disabled || credentialChanges.has('valid-state')`), false);
   element('app').hidden = true;
+  // Settings are server-owned and shared by all tests; polling doesn't overwrite an open editor.
+  run(`scheduler = {credential_concurrency:2,active:2,queued:4}; renderScheduler(); openConcurrencySettings()`);
+  assert.equal(element('concurrency-settings').textContent, '凭证并发 2');
+  assert(element('scheduler-status').textContent.includes('进行中 2 · 排队 4'));
+  assert.equal(element('credential-concurrency').value, 2);
+  assert.equal(element('concurrency-dialog').open, true);
+  element('credential-concurrency').value = '1';
+  run(`renderScheduler()`);
+  assert.equal(element('credential-concurrency').value, '1', 'polling preserves an unsaved selection');
+  run(`var concurrencyCalls = []; api = async (path, options) => { concurrencyCalls.push([path, options]); return {credential_concurrency:1,active:2,queued:4}; }`);
+  await run(`saveConcurrency()`);
+  assert.deepEqual(plain(run(`concurrencyCalls`)), [[run(`BASE`) + '/settings', {method:'PUT',body:{credential_concurrency:1}}]]);
+  assert.equal(run(`scheduler.credential_concurrency`), 1);
+  assert.equal(element('concurrency-dialog').open, false);
+  run(`openConcurrencySettings(); api = async () => { throw new Error('Storage failure'); }`);
+  element('credential-concurrency').value = '3';
+  await run(`saveConcurrency()`);
+  assert.equal(run(`scheduler.credential_concurrency`), 1, 'a failed save preserves the server setting');
+  assert.equal(element('concurrency-dialog').open, true);
+  assert.equal(element('concurrency-error').textContent, 'Storage failure');
+  for (const value of ['', '0', '11', '1.5', 'abc']) {
+    element('credential-concurrency').value = value;
+    await run(`saveConcurrency()`);
+    assert.equal(element('concurrency-error').textContent, '凭证并发须为 1–10 的整数');
+  }
+  for (const test of ['candy','fingerprint','pelican','siwc']) {
+    const credential = {id:'queue-test',name:'Test',source:'auth_files',provider:'codex',siwc_bound:true,use_siwc:true,
+      candies:[],fingerprints:[],pelicans:[],siwc:[],running:{test,model:'gpt-test',done:0,total:3,queued:true}};
+    const row = run(`render${test === 'siwc' ? 'SIWC' : test[0].toUpperCase()+test.slice(1)}Row(${JSON.stringify(credential)})`);
+    assert(row.includes('排队中') && row.includes(`data-${test}-cancel=`), test + ' must expose queue status and cancellation');
+    assert(!row.includes('collection-progress'), 'queued work must not look like an active request');
+    assert(run(`credentialBlocker(${JSON.stringify(credential)}, '${test}')`).includes('排队中'));
+  }
   assert.equal(run(`fmtPercent(undefined)`), '—');
   assert(!run(`fingerprintResultHTML({status:'completed',model:'test',attribution:{prediction:'test',prediction_name:'test',probability:0.5,used_outputs:1,results:null}})`).includes('NaN'));
   run(`candySelected.add('a'); fingerprintSelected.add('a'); fingerprintExpanded.add('a'); showLogin('Expired')`);
@@ -617,5 +684,5 @@ const stableID = (kind, parts) => kind + ':' + crypto.createHash('sha256').updat
   assert.equal(element('login-error').textContent, 'Expired');
   assert.equal(element('login-form').hidden, false, 'an expired management key returns to manual login');
   assert(!element('fingerprint-rows').innerHTML.includes('data-fingerprint-run'));
-  console.log('UI checks passed: identities, filters, plans, enable switches, catalog recovery, fingerprint detection results and controls, refresh, panel authentication and themes, login reset, notices, metrics.');
+  console.log('UI checks passed: shared concurrency settings, queue status and cancellation, identities, filters, plans, enable switches, catalog recovery, fingerprint results, refresh, panel authentication and themes, login reset, notices, metrics.');
 })().catch(err => { console.error(err); process.exitCode = 1; });

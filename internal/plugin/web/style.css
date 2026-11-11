@@ -109,6 +109,7 @@ details.problem[open] summary .chev, .row.open .toggle .chev { transform: rotate
 .tab[aria-selected="true"]:hover { translate: 0 -1px; }
 .page-actions { display: flex; gap: 2px; padding: 3px; }
 .page-actions button { display: inline-flex; align-items: center; justify-content: center; width: 32px; padding: 0; }
+#concurrency-settings { width: auto; padding: 0 10px; font-size: 12px; }
 #refresh[aria-busy="true"] .icon { animation: spin .8s linear infinite; }
 .panel-intro { margin-bottom: var(--section-gap); color: var(--muted); }
 .panel-intro p { margin: 0 0 8px; }

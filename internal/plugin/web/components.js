@@ -133,15 +133,16 @@ function resultOutcome({ tone = "", symbol, titleHTML, detailHTML = "", progress
   return `<div class="outcome ${tone}"><span class="outcome-icon">${icon(symbol, progressHTML ? "spin" : "")}</span><div class="outcome-copy"><div class="outcome-title">${titleHTML}</div>${detailHTML ? `<div class="outcome-detail">${detailHTML}</div>` : ""}${progressHTML}</div></div>`;
 }
 function collectionOutcome(p) {
+  if (p.queued) return resultOutcome({ symbol: "clock", titleHTML: "排队中", detailHTML: "等待凭证并发名额" });
   return resultOutcome({
     symbol: "loader-circle",
-    titleHTML: `${p.cancelling ? "正在停止" : "正在采集"} <span class="meta mono">${p.done}/${p.total}</span>`,
+    titleHTML: `${p.cancelling ? "正在停止" : p.test === "fingerprint" ? "正在采集" : p.test === "pelican" ? "正在作画" : "正在测试"} <span class="meta mono">${p.done}/${p.total}</span>`,
     detailHTML: p.cancelling ? "正在中断进行中的请求，已收到的回答会保存" : "",
     progressHTML: `<progress class="collection-progress" value="${p.done}" max="${p.total}" aria-label="采集进度"></progress>`,
   });
 }
 function collectionButton(test, credential, progress, label) {
-  if (progress) return `<button class="btn ghost" type="button" data-${test}-cancel="${esc(credential.id)}" data-tip="停止测试并中断进行中的请求" ${pending || progress.cancelling ? "disabled" : ""}>停止</button>`;
+  if (progress) return `<button class="btn ghost" type="button" data-${test}-cancel="${esc(credential.id)}" data-tip="${progress.queued ? "取消排队，不发送测试请求" : "停止测试并中断进行中的请求"}" ${pending || progress.cancelling ? "disabled" : ""}>${progress.queued ? "取消" : "停止"}</button>`;
   return `<button class="btn" type="button" data-${test}-run="${esc(credential.id)}" ${disabledFor(runBlocker(test, credential))}>${icon("play")}${esc(label)}</button>`;
 }
 // The latest result of a single-prompt test: its verdict and model, then its usage.

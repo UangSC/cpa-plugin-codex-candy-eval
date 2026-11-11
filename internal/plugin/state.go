@@ -34,15 +34,16 @@ func recent[T any](h history[T]) history[T] {
 
 // state is everything the plugin persists, in the layout of schema stateSchemaVersion.
 type state struct {
-	SchemaVersion int                        `json:"schema_version"`
-	Candies       history[candyRecord]       `json:"candies"`
-	Fingerprints  history[fingerprintRecord] `json:"fingerprints"`
-	Pelicans      history[pelicanRecord]     `json:"pelicans"`
-	SIWC          history[siwcRecord]        `json:"siwc"`
+	SchemaVersion         int                        `json:"schema_version"`
+	CredentialConcurrency int                        `json:"credential_concurrency"`
+	Candies               history[candyRecord]       `json:"candies"`
+	Fingerprints          history[fingerprintRecord] `json:"fingerprints"`
+	Pelicans              history[pelicanRecord]     `json:"pelicans"`
+	SIWC                  history[siwcRecord]        `json:"siwc"`
 }
 
 func emptyState() state {
-	return state{SchemaVersion: stateSchemaVersion, Candies: history[candyRecord]{}, Fingerprints: history[fingerprintRecord]{}, Pelicans: history[pelicanRecord]{}, SIWC: history[siwcRecord]{}}
+	return state{SchemaVersion: stateSchemaVersion, CredentialConcurrency: defaultCredentialConcurrency, Candies: history[candyRecord]{}, Fingerprints: history[fingerprintRecord]{}, Pelicans: history[pelicanRecord]{}, SIWC: history[siwcRecord]{}}
 }
 
 // record is what the records of every test have.
@@ -185,6 +186,7 @@ func clearRecordsResponse(test string) managementResponse {
 		records.Pelicans = history[pelicanRecord]{}
 	case "all":
 		records = emptyState()
+		records.CredentialConcurrency = previous.CredentialConcurrency
 	default:
 		return jsonError(http.StatusBadRequest, "未知测试类型")
 	}
