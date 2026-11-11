@@ -14,7 +14,7 @@ import (
 
 const (
 	pluginID      = "cpa-codex-candy-eval"
-	pluginVersion = "0.4.6"
+	pluginVersion = "0.4.7-uangsc.1"
 	ABIVersion    = 1
 	// rpcSchemaVersion is the version of CPA's plugin RPC contract, not of the state file.
 	rpcSchemaVersion = 6
@@ -82,7 +82,7 @@ func HandleMethod(method string, request []byte) (response []byte) {
 				"Name":             pluginID,
 				"Version":          pluginVersion,
 				"Author":           "haowang02",
-				"GitHubRepository": "https://github.com/haowang02/cpa-plugin-codex-candy-eval",
+				"GitHubRepository": "https://github.com/UangSC/cpa-plugin-codex-candy-eval",
 				"Logo":             "data:image/svg+xml;base64," + base64.StdEncoding.EncodeToString([]byte(logoSVG)),
 				"ConfigFields":     []any{},
 			},
